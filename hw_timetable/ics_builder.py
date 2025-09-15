@@ -29,6 +29,40 @@ def _format_local(dt: datetime) -> str:
     """Format a datetime in local time without timezone suffix."""
     return dt.strftime("%Y%m%dT%H%M%S")
 
+
+def _escape_text(value: str) -> str:
+    """Escape text for RFC5545 TEXT value."""
+
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    escaped = normalized.replace("\\", "\\\\")
+    escaped = escaped.replace("\n", "\\n")
+    escaped = escaped.replace(",", "\\,")
+    escaped = escaped.replace(";", "\\;")
+    return escaped
+
+
+def _fold_line(line: str, limit: int = 75) -> List[str]:
+    """Fold a line according to RFC5545 (75 octets)."""
+
+    if len(line.encode("utf-8")) <= limit:
+        return [line]
+
+    folded: List[str] = []
+    current_chars: List[str] = []
+    current_bytes = 0
+
+    for ch in line:
+        ch_bytes = len(ch.encode("utf-8"))
+        if current_bytes + ch_bytes > limit:
+            folded.append("".join(current_chars))
+            current_chars = [" "]
+            current_bytes = 1
+        current_chars.append(ch)
+        current_bytes += ch_bytes
+
+    folded.append("".join(current_chars))
+    return folded
+
 def build_events(
     activities: Iterable[Activity],
     *,
@@ -114,10 +148,10 @@ def build_events(
             group = groups.setdefault(
                 key,
                 {
-                    "summary": f"{act.CourseCode} – {act_type}",
+                    "summary": f"{act.CourseCode} – {act_type or ''}",
                     "location": location,
                     "description": description,
-                    "categories": act_type,
+                    "categories": act_type or "",
                     "transp": "OPAQUE",
                     "dates": [],
                     "start_time": act.StartTime,
@@ -267,7 +301,7 @@ def build_ics(
         lines.append("BEGIN:VEVENT")
         lines.append(f"UID:{e['uid']}")
         lines.append(f"DTSTAMP:{_format(now)}")
-        lines.append(f"SUMMARY:{e['summary']}")
+        lines.append(f"SUMMARY:{_escape_text(e['summary'])}")
         lines.append(
             f"DTSTART;TZID=Europe/London:{_format_local(e['start'])}"
         )
@@ -278,16 +312,20 @@ def build_ics(
             exdate_str = ",".join(_format_local(d) for d in e["exdates"])
             lines.append(f"EXDATE;TZID=Europe/London:{exdate_str}")
         if e["location"]:
-            lines.append(f"LOCATION:{e['location']}")
+            lines.append(f"LOCATION:{_escape_text(e['location'])}")
         if e["description"]:
-            lines.append(f"DESCRIPTION:{e['description']}")
-        lines.append(f"CATEGORIES:{e['categories']}")
+            lines.append(f"DESCRIPTION:{_escape_text(e['description'])}")
+        if e["categories"]:
+            lines.append(f"CATEGORIES:{_escape_text(e['categories'])}")
         lines.append(f"URL:{DASHBOARD_URL}")
         lines.append("STATUS:CONFIRMED")
         lines.append(f"TRANSP:{e['transp']}")
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
-    ics = "\r\n".join(lines) + "\r\n"
+    folded_lines: List[str] = []
+    for line in lines:
+        folded_lines.extend(_fold_line(line))
+    ics = "\r\n".join(folded_lines) + "\r\n"
     return ics, events
 
 
