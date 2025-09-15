@@ -54,14 +54,28 @@ def _fold_line(line: str, limit: int = 75) -> List[str]:
     for ch in line:
         ch_bytes = len(ch.encode("utf-8"))
         if current_bytes + ch_bytes > limit:
-            folded.append("".join(current_chars))
+            if current_chars:
+                folded.append("".join(current_chars))
             current_chars = [" "]
             current_bytes = 1
         current_chars.append(ch)
         current_bytes += ch_bytes
 
-    folded.append("".join(current_chars))
+    if current_chars:
+        folded.append("".join(current_chars))
     return folded
+
+
+def _format_lines(lines: Iterable[str]) -> str:
+    """Join property lines ensuring CRLF endings and proper folding."""
+
+    formatted: List[str] = []
+    for line in lines:
+        if not line:
+            continue
+        formatted.extend(_fold_line(line))
+
+    return "\r\n".join(formatted) + "\r\n"
 
 def build_events(
     activities: Iterable[Activity],
@@ -271,6 +285,7 @@ def build_ics(
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//HW Timetable Exporter//EN",
+        "CALSCALE:GREGORIAN",
     ]
 
     # Timezone definition for Europe/London
@@ -322,10 +337,7 @@ def build_ics(
         lines.append(f"TRANSP:{e['transp']}")
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
-    folded_lines: List[str] = []
-    for line in lines:
-        folded_lines.extend(_fold_line(line))
-    ics = "\r\n".join(folded_lines) + "\r\n"
+    ics = _format_lines(lines)
     return ics, events
 
 
