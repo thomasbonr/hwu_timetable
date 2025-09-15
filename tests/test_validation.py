@@ -33,6 +33,7 @@ def test_ics_structure():
     assert "BEGIN:VCALENDAR" in ics
     assert "VERSION:2.0" in ics
     assert "PRODID:-//HW Timetable Exporter//EN" in ics
+    assert "CALSCALE:GREGORIAN" in ics
     assert ics.count("BEGIN:VEVENT") >= 1
 
 
