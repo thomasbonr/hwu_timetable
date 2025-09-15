@@ -36,5 +36,6 @@ def test_dst_conversion():
         "Semesters": ["S1"],
     }
     ics, _ = ics_builder.build_ics(programme_info, [make_activity()], [], tz=tz)
-    assert "DTSTART:20231023T080000Z" in ics
-    assert "DTSTART:20231030T090000Z" in ics
+    assert "BEGIN:VTIMEZONE" in ics
+    assert "DTSTART;TZID=Europe/London:20231023T090000" in ics
+    assert "RRULE:FREQ=WEEKLY;WKST=MO;UNTIL=20231030T090000Z" in ics

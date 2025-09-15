@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Dict, Any
 from zoneinfo import ZoneInfo
 
 from .models import Activity, BlockedPeriod
@@ -21,15 +21,13 @@ def _parse_time(s: str) -> time:
 
 
 def _format(dt: datetime) -> str:
+    """Format a datetime in UTC with trailing Z."""
     return dt.strftime("%Y%m%dT%H%M%SZ")
 
 
-def _uid(activity: Activity, occ_date: date) -> str:
-    base = (
-        f"{activity.CourseCode}|{activity.ActivityName}|{occ_date}|{activity.StartTime}"
-    )
-    return hashlib.sha1(base.encode()).hexdigest()
-
+def _format_local(dt: datetime) -> str:
+    """Format a datetime in local time without timezone suffix."""
+    return dt.strftime("%Y%m%dT%H%M%S")
 
 def build_events(
     activities: Iterable[Activity],
@@ -40,20 +38,24 @@ def build_events(
     filter_courses: Optional[set[str]] = None,
     filter_types: Optional[set[str]] = None,
 ) -> List[dict]:
-    events: List[dict] = []
-    seen_uids: set[str] = set()
+    """Build VEVENT structures collapsed by weekly recurrence."""
+
+    groups: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+
     for act in activities:
         if filter_courses and act.CourseCode not in filter_courses:
             continue
         act_type = act.ActivityTypeDescription or act.Type
         if filter_types and act_type not in filter_types:
             continue
+
         weeks = act.Weeks or act.RunningWeeks
         for week in weeks:
             start_date_str = (
                 week.StartDate if hasattr(week, "StartDate") else week["StartDate"]
             )
             occ_date = _parse_date(start_date_str) + timedelta(days=act.ScheduledDay)
+
             if act.StartDate and occ_date < _parse_date(act.StartDate):
                 continue
             if act.EndDate and occ_date > _parse_date(act.EndDate):
@@ -62,15 +64,8 @@ def build_events(
                 continue
             if end and occ_date > end:
                 continue
-            uid = _uid(act, occ_date)
-            if uid in seen_uids:
-                continue
-            seen_uids.add(uid)
-            start_dt = datetime.combine(occ_date, _parse_time(act.StartTime), tz)
-            end_dt = datetime.combine(occ_date, _parse_time(act.EndTime), tz)
-            start_utc = start_dt.astimezone(timezone.utc)
-            end_utc = end_dt.astimezone(timezone.utc)
-            location_parts = []
+
+            location_parts: List[str] = []
             for loc in act.Locations:
                 building = (
                     loc.Building
@@ -82,7 +77,8 @@ def build_events(
                 if part:
                     location_parts.append(part)
             location = "/".join(location_parts)
-            instructors = []
+
+            instructors: List[str] = []
             for ins in act.InstructorAccounts:
                 name = (
                     ins.DisplayName
@@ -91,6 +87,7 @@ def build_events(
                 )
                 email = ins.Email if hasattr(ins, "Email") else ins.get("Email")
                 instructors.append(f"{name} {email}".strip())
+
             description_parts = [
                 act.CourseName,
                 act.ActivityName,
@@ -101,19 +98,77 @@ def build_events(
                 *instructors,
                 act.ActivityWeekLabel,
             ]
-            description = "\\n".join(filter(None, description_parts))
-            events.append(
+            description = "\n".join(filter(None, description_parts))
+
+            key = (
+                act.CourseCode,
+                act.ActivityName,
+                act_type,
+                location,
+                str(act.ScheduledDay),
+                act.StartTime,
+                act.EndTime,
+                act.ActivityWeekLabel,
+            )
+
+            group = groups.setdefault(
+                key,
                 {
-                    "uid": uid,
-                    "start": start_utc,
-                    "end": end_utc,
                     "summary": f"{act.CourseCode} – {act_type}",
                     "location": location,
                     "description": description,
                     "categories": act_type,
                     "transp": "OPAQUE",
-                }
+                    "dates": [],
+                    "start_time": act.StartTime,
+                    "end_time": act.EndTime,
+                    "course_code": act.CourseCode,
+                    "activity_name": act.ActivityName,
+                },
             )
+            group["dates"].append(occ_date)
+
+    events: List[dict] = []
+    for group in groups.values():
+        dates = sorted(group["dates"])
+        start_time = _parse_time(group["start_time"])
+        end_time = _parse_time(group["end_time"])
+        first_date = dates[0]
+        last_date = dates[-1]
+
+        start_dt = datetime.combine(first_date, start_time, tz)
+        end_dt = datetime.combine(first_date, end_time, tz)
+
+        # Determine missing weeks for EXDATE
+        exdates: List[datetime] = []
+        cur = first_date
+        seen = set(dates)
+        while cur <= last_date:
+            if cur not in seen:
+                exdates.append(datetime.combine(cur, start_time, tz))
+            cur += timedelta(days=7)
+
+        last_start_utc = datetime.combine(last_date, start_time, tz).astimezone(timezone.utc)
+        rrule = f"FREQ=WEEKLY;WKST=MO;UNTIL={_format(last_start_utc)}"
+
+        uid_base = f"{group['course_code']}|{group['activity_name']}|{first_date}|{group['start_time']}|{group['location']}"
+        uid = hashlib.sha1(uid_base.encode()).hexdigest()
+
+        events.append(
+            {
+                "uid": uid,
+                "summary": group["summary"],
+                "location": group["location"],
+                "description": group["description"],
+                "categories": group["categories"],
+                "transp": group["transp"],
+                "start": start_dt,
+                "end": end_dt,
+                "rrule": rrule,
+                "exdates": exdates,
+            }
+        )
+
     return events
 
 
@@ -133,20 +188,20 @@ def build_blocked_events(
             continue
         start_dt = datetime.combine(occ_date, _parse_time(p.StartTime), tz)
         end_dt = datetime.combine(occ_date, _parse_time(p.EndTime), tz)
-        start_utc = start_dt.astimezone(timezone.utc)
-        end_utc = end_dt.astimezone(timezone.utc)
         summary = p.Description or "Blocked out period"
         uid = hashlib.sha1(f"{summary}|{occ_date}|{p.StartTime}".encode()).hexdigest()
         events.append(
             {
                 "uid": uid,
-                "start": start_utc,
-                "end": end_utc,
+                "start": start_dt,
+                "end": end_dt,
                 "summary": summary,
                 "location": "",
                 "description": summary,
                 "categories": "Blocked",
                 "transp": "TRANSPARENT",
+                "rrule": None,
+                "exdates": [],
             }
         )
     return events
@@ -176,15 +231,52 @@ def build_ics(
         events.extend(
             build_blocked_events(blocked_periods, tz=tz, start=start, end=end)
         )
+
     now = datetime.now(timezone.utc)
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HW Timetable Exporter//EN"]
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//HW Timetable Exporter//EN",
+    ]
+
+    # Timezone definition for Europe/London
+    lines.extend(
+        [
+            "BEGIN:VTIMEZONE",
+            "TZID:Europe/London",
+            "X-LIC-LOCATION:Europe/London",
+            "BEGIN:DAYLIGHT",
+            "TZOFFSETFROM:+0000",
+            "TZOFFSETTO:+0100",
+            "TZNAME:BST",
+            "DTSTART:19700329T010000",
+            "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU",
+            "END:DAYLIGHT",
+            "BEGIN:STANDARD",
+            "TZOFFSETFROM:+0100",
+            "TZOFFSETTO:+0000",
+            "TZNAME:GMT",
+            "DTSTART:19701025T020000",
+            "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU",
+            "END:STANDARD",
+            "END:VTIMEZONE",
+        ]
+    )
+
     for e in events:
         lines.append("BEGIN:VEVENT")
         lines.append(f"UID:{e['uid']}")
         lines.append(f"DTSTAMP:{_format(now)}")
         lines.append(f"SUMMARY:{e['summary']}")
-        lines.append(f"DTSTART:{_format(e['start'])}")
-        lines.append(f"DTEND:{_format(e['end'])}")
+        lines.append(
+            f"DTSTART;TZID=Europe/London:{_format_local(e['start'])}"
+        )
+        lines.append(f"DTEND;TZID=Europe/London:{_format_local(e['end'])}")
+        if e.get("rrule"):
+            lines.append(f"RRULE:{e['rrule']}")
+        if e.get("exdates"):
+            exdate_str = ",".join(_format_local(d) for d in e["exdates"])
+            lines.append(f"EXDATE;TZID=Europe/London:{exdate_str}")
         if e["location"]:
             lines.append(f"LOCATION:{e['location']}")
         if e["description"]:

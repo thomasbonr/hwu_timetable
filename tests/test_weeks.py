@@ -37,4 +37,5 @@ def test_weeks_preferred_over_runningweeks():
         "Semesters": ["S1"],
     }
     ics, _ = ics_builder.build_ics(programme_info, [activity], [], tz=tz)
-    assert "DTSTART:20231009" not in ics
+    assert "DTSTART;TZID=Europe/London:20231002T090000" in ics
+    assert "EXDATE;TZID=Europe/London:20231009T090000" in ics
