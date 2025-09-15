@@ -7,7 +7,7 @@ Command line utility to export Heriot-Watt University timetables to iCalendar.
 Clone the repository and install the dependencies:
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 ## Authentication
@@ -27,11 +27,12 @@ authentication entirely by using bundled JSON fixtures.
 
 ## Usage
 
-```
-python -m hw_timetable.cli --preview
-python -m hw_timetable.cli --start 2024-01-08 --end 2024-05-10
-python -m hw_timetable.cli --offline --dump-json
+```bash
+python3 -m hw_timetable.cli --preview
+python3 -m hw_timetable.cli --start 2024-01-08 --end 2024-05-10
+python3 -m hw_timetable.cli --only-current-semester --filter-course C12345
+python3 -m hw_timetable.cli --offline --dump-json
 ```
 
 Generated calendar files are written to `out/ics`. See
-`python -m hw_timetable.cli -h` for all available options.
+`python3 -m hw_timetable.cli -h` for all available options.
