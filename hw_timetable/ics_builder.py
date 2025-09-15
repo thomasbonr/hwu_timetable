@@ -13,7 +13,7 @@ DASHBOARD_URL = "https://timetableexplorer.hw.ac.uk/timetable-dashboard"
 
 
 def _parse_date(s: str) -> date:
-    return datetime.strptime(s, "%Y-%m-%d").date()
+    return datetime.fromisoformat(s.replace('Z', '')).date()
 
 
 def _parse_time(s: str) -> time:
