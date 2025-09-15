@@ -34,31 +34,32 @@ def _save_cache(cache: msal.SerializableTokenCache) -> None:
     CACHE_PATH.write_text(cache.serialize())
 
 
+# auth.py
 def acquire_token() -> str:
-    """Acquire an access token using MSAL or environment fallback."""
+    # 0) Prefer env var if present (quick manual token)
+    token = os.getenv("HW_TIMETABLE_ACCESS_TOKEN")
+    if token:
+        return token
+
     cache = _load_cache()
-    app = msal.PublicClientApplication(
-        CLIENT_ID, authority=AUTHORITY, token_cache=cache
-    )
+    app = msal.PublicClientApplication(CLIENT_ID, authority=AUTHORITY, token_cache=cache)
+
+    # 1) Silent
     accounts = app.get_accounts()
-    result: Optional[dict] = None
-    if accounts:
-        result = app.acquire_token_silent(SCOPES, account=accounts[0])
+    result = app.acquire_token_silent(SCOPES, account=accounts[0]) if accounts else None
+
+    # 2) Device code (will fail given current app config, but kept as fallback)
     if not result:
         try:
             flow = app.initiate_device_flow(scopes=SCOPES)
-        except Exception as exc:  # pragma: no cover - network errors
+            if flow and "user_code" in flow:
+                print(flow["message"])
+                result = app.acquire_token_by_device_flow(flow)
+        except Exception as exc:
             logging.error("Device flow init failed: %s", exc)
-            flow = None
-        if flow and "user_code" in flow:
-            print(flow["message"])  # pragma: no cover - interactive
-            result = app.acquire_token_by_device_flow(flow)
-        if not result or "access_token" not in result:
-            token = os.getenv("HW_TIMETABLE_ACCESS_TOKEN")
-            if not token:
-                raise RuntimeError("Could not obtain access token")
-            return token
-    if "access_token" in result:
+
+    if result and "access_token" in result:
         _save_cache(cache)
         return result["access_token"]
-    raise RuntimeError("Failed to acquire token")
+
+    raise RuntimeError("Could not obtain access token (set HW_TIMETABLE_ACCESS_TOKEN)")
