@@ -47,30 +47,73 @@ def _get_loc_field(loc: any, *names: str) -> str:
     return ""
 
 def _build_location_string(act: any) -> str:
-    parts = []
-    seen = set()
+    building_order: List[str] = []
+    building_rooms: Dict[str, List[str]] = {}
+    extras: List[str] = []
+    extras_seen: set[str] = set()
     for loc in getattr(act, "Locations", []) or []:
-        building = _norm_building(_get_loc_field(
-            loc,
-            "Building", "BuildingName", "Site", "Campus",
-            "LocationBuilding", "Location"
-        ))
-        room = _norm_room(_get_loc_field(
-            loc,
-            "Room", "RoomCode", "RoomName", "RoomNumber",
-            "Space", "Code"
-        ))
-        full = _ws(_get_loc_field(loc, "DisplayName", "Description", "LocationDescription", "Name", "FullName"))
-        text = None
-        if building or room:
-            # Build "Building - ROOM"; strip joiner if one side missing
-            text = f"{building} - {room}".strip(" -")
+        building = _norm_building(
+            _get_loc_field(
+                loc,
+                "Building",
+                "BuildingName",
+                "Site",
+                "Campus",
+                "LocationBuilding",
+            )
+        )
+        room = _norm_room(
+            _get_loc_field(
+                loc,
+                "Location",
+                "Room",
+                "RoomCode",
+                "RoomName",
+                "RoomNumber",
+                "Space",
+                "Code",
+            )
+        )
+        full = _ws(
+            _get_loc_field(
+                loc,
+                "DisplayName",
+                "Description",
+                "LocationDescription",
+                "Name",
+                "FullName",
+            )
+        )
+        if building:
+            if building not in building_rooms:
+                building_rooms[building] = []
+                building_order.append(building)
+            if room and room not in building_rooms[building]:
+                building_rooms[building].append(room)
+        elif room:
+            if room and room not in extras_seen:
+                extras.append(room)
+                extras_seen.add(room)
         elif full:
-            text = full
-        if text and text not in seen:
-            seen.add(text)
-            parts.append(text)
-    return "/".join(parts)
+            if full and full not in extras_seen:
+                extras.append(full)
+                extras_seen.add(full)
+    parts: List[str] = []
+    seen_parts: set[str] = set()
+    for building in building_order:
+        rooms = building_rooms[building]
+        if rooms:
+            part = f"{building} - {', '.join(rooms)}"
+        else:
+            part = building
+        if part and part not in seen_parts:
+            parts.append(part)
+            seen_parts.add(part)
+    for extra in extras:
+        if extra and extra not in seen_parts:
+            parts.append(extra)
+            seen_parts.add(extra)
+    return " / ".join(parts)
 # ---- End helpers ----
 
 def _fold_line(line: str, limit: int = 75) -> List[str]:
@@ -134,6 +177,10 @@ def build_events(
                     instructors.append(name.strip())
             description_parts = [
                 (f"Instructor(s): {', '.join([n for n in instructors if n])}" if instructors else ""),
+                (f"Course: {act.CourseName}" if act.CourseName else ""),
+                (f"Group: {act.Group}" if getattr(act, "Group", None) else ""),
+                (f"Cohort: {act.Cohort}" if getattr(act, "Cohort", None) else ""),
+                (f"Week: {act.ActivityWeekLabel}" if act.ActivityWeekLabel else ""),
                 (f"Activity code: {act.ActivityName}" if act.ActivityName else ""),
             ]
             description = "\n".join(filter(None, description_parts))
@@ -150,7 +197,17 @@ def build_events(
             group = groups.setdefault(
                 key,
                 {
-                    "summary": f"{act.CourseName} - {act_type or ''}",
+                    "summary": " - ".join(
+                        [
+                            part
+                            for part in (
+                                act.CourseCode,
+                                act.CourseName,
+                                act_type,
+                            )
+                            if part
+                        ]
+                    ),
                     "location": location,
                     "description": description,
                     "categories": act_type or "",
