@@ -1,38 +1,20 @@
 """ICS calendar builder."""
-
 from __future__ import annotations
-
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable, List, Optional, Tuple, Dict, Any
 from zoneinfo import ZoneInfo
-
 from .models import Activity, BlockedPeriod
-
 DASHBOARD_URL = "https://timetableexplorer.hw.ac.uk/timetable-dashboard"
-
-
 def _parse_date(s: str) -> date:
     return datetime.fromisoformat(s.replace('Z', '')).date()
-
-
 def _parse_time(s: str) -> time:
     return datetime.strptime(s, "%H:%M:%S").time()
-
-
 def _format(dt: datetime) -> str:
-    """Format a datetime in UTC with trailing Z."""
     return dt.strftime("%Y%m%dT%H%M%SZ")
-
-
 def _format_local(dt: datetime) -> str:
-    """Format a datetime in local time without timezone suffix."""
     return dt.strftime("%Y%m%dT%H%M%S")
-
-
 def _escape_text(value: str) -> str:
-    """Escape text for RFC5545 TEXT value."""
-
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
     escaped = normalized.replace("\\", "\\\\")
     escaped = escaped.replace("\n", "\\n")
@@ -40,17 +22,63 @@ def _escape_text(value: str) -> str:
     escaped = escaped.replace(";", "\\;")
     return escaped
 
+# ---- Location parsing & normalization helpers ----
+def _ws(s: str) -> str:
+    return " ".join(str(s).split()) if s is not None else ""
+
+def _norm_building(b: str) -> str:
+    # Keep original casing but normalize whitespace
+    return _ws(b)
+
+def _norm_room(r: str) -> str:
+    # Normalize whitespace and uppercase room codes like JW1
+    return _ws(r).upper()
+
+def _get_loc_field(loc: any, *names: str) -> str:
+    for n in names:
+        if hasattr(loc, n):
+            v = getattr(loc, n, None)
+        elif isinstance(loc, dict):
+            v = loc.get(n)
+        else:
+            v = None
+        if v:
+            return str(v)
+    return ""
+
+def _build_location_string(act: any) -> str:
+    parts = []
+    seen = set()
+    for loc in getattr(act, "Locations", []) or []:
+        building = _norm_building(_get_loc_field(
+            loc,
+            "Building", "BuildingName", "Site", "Campus",
+            "LocationBuilding", "Location"
+        ))
+        room = _norm_room(_get_loc_field(
+            loc,
+            "Room", "RoomCode", "RoomName", "RoomNumber",
+            "Space", "Code"
+        ))
+        full = _ws(_get_loc_field(loc, "DisplayName", "Description", "LocationDescription", "Name", "FullName"))
+        text = None
+        if building or room:
+            # Build "Building - ROOM"; strip joiner if one side missing
+            text = f"{building} - {room}".strip(" -")
+        elif full:
+            text = full
+        if text and text not in seen:
+            seen.add(text)
+            parts.append(text)
+    return "/".join(parts)
+# ---- End helpers ----
 
 def _fold_line(line: str, limit: int = 75) -> List[str]:
-    """Fold a line according to RFC5545 (75 octets)."""
-
     if len(line.encode("utf-8")) <= limit:
         return [line]
-
     folded: List[str] = []
     current_chars: List[str] = []
     current_bytes = 0
-
     for ch in line:
         ch_bytes = len(ch.encode("utf-8"))
         if current_bytes + ch_bytes > limit:
@@ -60,23 +88,16 @@ def _fold_line(line: str, limit: int = 75) -> List[str]:
             current_bytes = 1
         current_chars.append(ch)
         current_bytes += ch_bytes
-
     if current_chars:
         folded.append("".join(current_chars))
     return folded
-
-
 def _format_lines(lines: Iterable[str]) -> str:
-    """Join property lines ensuring CRLF endings and proper folding."""
-
     formatted: List[str] = []
     for line in lines:
         if not line:
             continue
         formatted.extend(_fold_line(line))
-
     return "\r\n".join(formatted) + "\r\n"
-
 def build_events(
     activities: Iterable[Activity],
     *,
@@ -86,24 +107,17 @@ def build_events(
     filter_courses: Optional[set[str]] = None,
     filter_types: Optional[set[str]] = None,
 ) -> List[dict]:
-    """Build VEVENT structures collapsed by weekly recurrence."""
-
     groups: Dict[Tuple[str, ...], Dict[str, Any]] = {}
-
     for act in activities:
         if filter_courses and act.CourseCode not in filter_courses:
             continue
         act_type = act.ActivityTypeDescription or act.Type
         if filter_types and act_type not in filter_types:
             continue
-
         weeks = act.Weeks or act.RunningWeeks
         for week in weeks:
-            start_date_str = (
-                week.StartDate if hasattr(week, "StartDate") else week["StartDate"]
-            )
+            start_date_str = (week.StartDate if hasattr(week, "StartDate") else week["StartDate"])
             occ_date = _parse_date(start_date_str) + timedelta(days=act.ScheduledDay)
-
             if act.StartDate and occ_date < _parse_date(act.StartDate):
                 continue
             if act.EndDate and occ_date > _parse_date(act.EndDate):
@@ -112,42 +126,17 @@ def build_events(
                 continue
             if end and occ_date > end:
                 continue
-
-            location_parts: List[str] = []
-            for loc in act.Locations:
-                building = (
-                    loc.Building
-                    if hasattr(loc, "Building")
-                    else loc.get("Building", "")
-                )
-                room = loc.Room if hasattr(loc, "Room") else loc.get("Room", "")
-                part = f"{building} {room}".strip()
-                if part:
-                    location_parts.append(part)
-            location = "/".join(location_parts)
-
+            location = _build_location_string(act)
             instructors: List[str] = []
             for ins in act.InstructorAccounts:
-                name = (
-                    ins.DisplayName
-                    if hasattr(ins, "DisplayName")
-                    else ins.get("DisplayName", "")
-                )
-                email = ins.Email if hasattr(ins, "Email") else ins.get("Email")
-                instructors.append(f"{name} {email}".strip())
-
+                name = (ins.DisplayName if hasattr(ins, "DisplayName") else ins.get("DisplayName",""))
+                if name:
+                    instructors.append(name.strip())
             description_parts = [
-                act.CourseName,
-                act.ActivityName,
-                act.Group or "",
-                act.Cohort or "",
-                ",".join(act.ProgrammeCodes),
-                act.SemesterCode,
-                *instructors,
-                act.ActivityWeekLabel,
+                (f"Instructor(s): {', '.join([n for n in instructors if n])}" if instructors else ""),
+                (f"Activity code: {act.ActivityName}" if act.ActivityName else ""),
             ]
             description = "\n".join(filter(None, description_parts))
-
             key = (
                 act.CourseCode,
                 act.ActivityName,
@@ -158,11 +147,10 @@ def build_events(
                 act.EndTime,
                 act.ActivityWeekLabel,
             )
-
             group = groups.setdefault(
                 key,
                 {
-                    "summary": f"{act.CourseCode} – {act_type or ''}",
+                    "summary": f"{act.CourseName} - {act_type or ''}",
                     "location": location,
                     "description": description,
                     "categories": act_type or "",
@@ -175,7 +163,6 @@ def build_events(
                 },
             )
             group["dates"].append(occ_date)
-
     events: List[dict] = []
     for group in groups.values():
         dates = sorted(group["dates"])
@@ -183,11 +170,8 @@ def build_events(
         end_time = _parse_time(group["end_time"])
         first_date = dates[0]
         last_date = dates[-1]
-
         start_dt = datetime.combine(first_date, start_time, tz)
         end_dt = datetime.combine(first_date, end_time, tz)
-
-        # Determine missing weeks for EXDATE
         exdates: List[datetime] = []
         cur = first_date
         seen = set(dates)
@@ -195,13 +179,10 @@ def build_events(
             if cur not in seen:
                 exdates.append(datetime.combine(cur, start_time, tz))
             cur += timedelta(days=7)
-
         last_start_utc = datetime.combine(last_date, start_time, tz).astimezone(timezone.utc)
         rrule = f"FREQ=WEEKLY;WKST=MO;UNTIL={_format(last_start_utc)}"
-
         uid_base = f"{group['course_code']}|{group['activity_name']}|{first_date}|{group['start_time']}|{group['location']}"
         uid = hashlib.sha1(uid_base.encode()).hexdigest()
-
         events.append(
             {
                 "uid": uid,
@@ -216,10 +197,7 @@ def build_events(
                 "exdates": exdates,
             }
         )
-
     return events
-
-
 def build_blocked_events(
     periods: Iterable[BlockedPeriod],
     *,
@@ -253,8 +231,6 @@ def build_blocked_events(
             }
         )
     return events
-
-
 def build_ics(
     programme_info: dict,
     activities: Iterable[Activity],
@@ -276,10 +252,7 @@ def build_ics(
         filter_types=filter_types,
     )
     if include_blocked:
-        events.extend(
-            build_blocked_events(blocked_periods, tz=tz, start=start, end=end)
-        )
-
+        events.extend(build_blocked_events(blocked_periods, tz=tz, start=start, end=end))
     now = datetime.now(timezone.utc)
     lines = [
         "BEGIN:VCALENDAR",
@@ -287,8 +260,6 @@ def build_ics(
         "PRODID:-//HW Timetable Exporter//EN",
         "CALSCALE:GREGORIAN",
     ]
-
-    # Timezone definition for Europe/London
     lines.extend(
         [
             "BEGIN:VTIMEZONE",
@@ -311,15 +282,12 @@ def build_ics(
             "END:VTIMEZONE",
         ]
     )
-
     for e in events:
         lines.append("BEGIN:VEVENT")
         lines.append(f"UID:{e['uid']}")
         lines.append(f"DTSTAMP:{_format(now)}")
         lines.append(f"SUMMARY:{_escape_text(e['summary'])}")
-        lines.append(
-            f"DTSTART;TZID=Europe/London:{_format_local(e['start'])}"
-        )
+        lines.append(f"DTSTART;TZID=Europe/London:{_format_local(e['start'])}")
         lines.append(f"DTEND;TZID=Europe/London:{_format_local(e['end'])}")
         if e.get("rrule"):
             lines.append(f"RRULE:{e['rrule']}")
@@ -339,8 +307,6 @@ def build_ics(
     lines.append("END:VCALENDAR")
     ics = _format_lines(lines)
     return ics, events
-
-
 def output_filename(programme_info: dict) -> str:
     year = programme_info.get("AcademicYear", "unknown").replace("/", "-")
     campus = programme_info.get("CampusCode", "campus")
