@@ -1,4 +1,4 @@
-# HW Timetable Exporter
+# Heriot-Watt Timetable Exporter
 
 Command-line utility that fetches Heriot-Watt University timetable data and
 produces standards-compliant iCalendar (`.ics`) files that can be imported into
@@ -58,21 +58,16 @@ supplied).
   the exporter strips it automatically before issuing requests. Tokens typically
   expire after a few hours, so repeat the steps whenever the API rejects a call.
 
+<img width="2475" height="856" alt="Screenshot 2026-01-27 103544" src="https://github.com/user-attachments/assets/a7a57f0d-13aa-4296-a6ac-4162908d0ca1" />
+
 ### Supplying the token to the CLI
 
 ```bash
 # Export the token for the current shell session
 export HW_TIMETABLE_ACCESS_TOKEN="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi..."
 
-# Download all JSON payloads (for offline runs) and generate the ICS preview
-python3 -m hw_timetable.cli --dump-json --preview
-```
-
-Once JSON fixtures have been dumped locally, you can run with `--offline` to
-avoid authenticating altogether:
-
-```bash
-python3 -m hw_timetable.cli --offline --preview
+# Download
+python3 -m hw_timetable.cli
 ```
 
 ## Basic Usage
