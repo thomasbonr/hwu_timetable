@@ -45,8 +45,6 @@ then provide it via one of the following mechanisms:
 
 - `--token <value>` CLI flag (highest priority).
 - `HW_TIMETABLE_ACCESS_TOKEN` environment variable.
-- `--token-url https://example.com/token.txt`, which fetches the token as plain
-  text from an internal endpoint you control.
 - Cached token at `~/.cache/hw_timetable/token.txt` (written automatically each
   time a token is supplied through one of the methods above).
 
@@ -80,7 +78,6 @@ CalDAV client.
 | `--preview` | Print the next 10 upcoming sessions to stdout after writing the ICS. |
 | `--verbose` | Enable debug logging for HTTP retries and filtering decisions. |
 | `--token` | Inline bearer token for protected API calls (overrides env/cache). |
-| `--token-url` | Fetch a bearer token from a URL that returns plain text. |
 
 All options can be combined. For example, to fetch Semester 2 labs only, dump
 the raw payloads, and preview the next lectures:

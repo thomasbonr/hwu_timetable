@@ -36,10 +36,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         "--token",
         help="Explicit bearer token to call the HW timetable API",
     )
-    parser.add_argument(
-        "--token-url",
-        help="HTTP(S) URL that returns a bearer token as plain text",
-    )
     return parser.parse_args(argv)
 
 def main(argv: List[str] | None = None) -> None:
@@ -55,7 +51,7 @@ def main(argv: List[str] | None = None) -> None:
     if not args.offline:
         from . import auth
 
-        token = auth.acquire_token(explicit_token=args.token, token_url=args.token_url)
+        token = auth.acquire_token(explicit_token=args.token)
         
     client = api.APIClient(token, dump_json=args.dump_json, offline=args.offline)
     programme_info = client.get("/Student/programme-info")
