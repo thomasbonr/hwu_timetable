@@ -38,18 +38,42 @@ python3 -m pip install -r requirements.txt
 
 ## Authentication
 
-Running the CLI requires an `Authorization: Bearer <token>` header. Obtain a
-token from the official timetable dashboard (open the browser dev tools network
-tab, capture any API call, and copy the `Authorization` header value). You can
-then provide it via one of the following mechanisms:
+Running the CLI requires an `Authorization: Bearer <token>` header. You can
+provide the token via the `--token` flag, the `HW_TIMETABLE_ACCESS_TOKEN`
+environment variable, or by reusing the cached value stored in
+`~/.cache/hw_timetable/token.txt` (written automatically each time a token is
+supplied).
 
-- `--token <value>` CLI flag (highest priority).
-- `HW_TIMETABLE_ACCESS_TOKEN` environment variable.
-- Cached token at `~/.cache/hw_timetable/token.txt` (written automatically each
-  time a token is supplied through one of the methods above).
+### How to capture the bearer token via your browser
+
+1. Sign in to the official HW timetable dashboard as usual.
+2. Open your browser developer tools and switch to the "Network" tab.
+3. Trigger any timetable action so that an API request appears (look for
+  requests going to `https://timetableexplorer-api.hw.ac.uk/...`).
+4. Click the API request, locate the **Request Headers** section, and copy the
+  full value of the `Authorization` header—it should look like
+  `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi...`.
+5. Paste that value into a safe place (password manager, `.env` file, etc.) so
+  the CLI can reuse it. You may keep the leading `Bearer ` prefix or remove it;
+  the exporter strips it automatically before issuing requests. Tokens typically
+  expire after a few hours, so repeat the steps whenever the API rejects a call.
+
+### Supplying the token to the CLI
+
+```bash
+# Export the token for the current shell session
+export HW_TIMETABLE_ACCESS_TOKEN="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi..."
+
+# Download all JSON payloads (for offline runs) and generate the ICS preview
+python3 -m hw_timetable.cli --dump-json --preview
+```
 
 Once JSON fixtures have been dumped locally, you can run with `--offline` to
-avoid authenticating altogether.
+avoid authenticating altogether:
+
+```bash
+python3 -m hw_timetable.cli --offline --preview
+```
 
 ## Basic Usage
 
