@@ -1,8 +1,7 @@
 # Heriot-Watt Timetable Exporter
 
 Command-line utility that fetches Heriot-Watt University timetable data and
-produces standards-compliant iCalendar (`.ics`) files that can be imported into
-Nextcloud, Apple Calendar, Google Calendar, or any other CalDAV-capable
+produces standards-compliant iCalendar (`.ics`) files that can be imported into Apple Calendar, Google Calendar, or any other CalDAV-capable
 consumer.
 
 ## Highlights
