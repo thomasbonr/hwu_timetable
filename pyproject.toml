@@ -9,8 +9,9 @@ description = "HW Timetable exporter CLI"
 authors = [{name = "Auto Dev"}]
 requires-python = ">=3.11"
 dependencies = [
-    "msal",
-    "requests",
+    "requests>=2.31.0",
+    "pydantic>=2.6.0",
+    "tzdata>=2023.3",
 ]
 
 [project.optional-dependencies]

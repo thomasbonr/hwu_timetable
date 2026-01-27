@@ -1,4 +1,9 @@
-"""Authentication helpers using MSAL."""
+"""Lightweight token helpers.
+
+The HW timetable API ultimately expects an ``Authorization: Bearer`` header. To
+keep the CLI predictable, we now rely entirely on user-provided tokens rather
+than attempting MSAL device flows.
+"""
 
 from __future__ import annotations
 
@@ -7,59 +12,71 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import msal
+try:  # requests is optional during offline tests
+    import requests  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled gracefully below
+    requests = None
 
-AUTHORITY = "https://login.microsoftonline.com/6c425ff2-6865-42df-a4db-8e6af634813d"
-CLIENT_ID = "9f069110-869b-4b7a-9dc9-8c80eec3df3c"
-# Only include non-reserved scopes when initiating device flow.  Using
-# ``offline_access``, ``openid`` or ``profile`` causes the flow to fail with
-# ``You cannot use any scope value that is reserved`` so we request only the
-# API scope here.  MSAL will add any required reserved scopes automatically.
-SCOPES = ["api://76ae141c-6671-45b5-8d6c-a4325e0a0032/student-timetable"]
-CACHE_PATH = Path(os.path.expanduser("~/.cache/hw_timetable/msal_cache.bin"))
+TOKEN_CACHE_PATH = Path(os.path.expanduser("~/.cache/hw_timetable/token.txt"))
 
 
-def _load_cache() -> msal.SerializableTokenCache:
-    cache = msal.SerializableTokenCache()
-    if CACHE_PATH.exists():
+def _read_cached_token() -> Optional[str]:
+    if TOKEN_CACHE_PATH.exists():
         try:
-            cache.deserialize(CACHE_PATH.read_text())
-        except Exception as exc:  # pragma: no cover - corruption is rare
-            logging.warning("Failed to deserialize cache: %s", exc)
-    return cache
+            cached = TOKEN_CACHE_PATH.read_text(encoding="utf-8").strip()
+            if cached:
+                return cached
+        except OSError as exc:  # pragma: no cover - disk issues are rare
+            logging.warning("Failed to read cached token: %s", exc)
+    return None
 
 
-def _save_cache(cache: msal.SerializableTokenCache) -> None:
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(cache.serialize())
+def _write_cached_token(token: str) -> None:
+    try:
+        TOKEN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_CACHE_PATH.write_text(token.strip(), encoding="utf-8")
+    except OSError as exc:  # pragma: no cover
+        logging.warning("Failed to write token cache: %s", exc)
 
 
-# auth.py
-def acquire_token() -> str:
-    # 0) Prefer env var if present (quick manual token)
-    token = os.getenv("HW_TIMETABLE_ACCESS_TOKEN")
-    if token:
+def _fetch_token_from_url(token_url: str) -> Optional[str]:
+    if not token_url:
+        return None
+    if not requests:
+        raise RuntimeError(
+            "requests is required to download tokens via --token-url; install it first"
+        )
+    try:
+        resp = requests.get(token_url, timeout=15)
+        resp.raise_for_status()
+        token = resp.text.strip()
+        if not token:
+            logging.warning("Token URL %s returned an empty response", token_url)
+            return None
         return token
+    except requests.RequestException as exc:  # pragma: no cover - network dependent
+        logging.error("Failed to fetch token from %s: %s", token_url, exc)
+        return None
 
-    cache = _load_cache()
-    app = msal.PublicClientApplication(CLIENT_ID, authority=AUTHORITY, token_cache=cache)
 
-    # 1) Silent
-    accounts = app.get_accounts()
-    result = app.acquire_token_silent(SCOPES, account=accounts[0]) if accounts else None
+def acquire_token(*, explicit_token: Optional[str] = None, token_url: Optional[str] = None) -> str:
+    """Return a bearer token using CLI/env/user-provided sources only."""
 
-    # 2) Device code (will fail given current app config, but kept as fallback)
-    if not result:
-        try:
-            flow = app.initiate_device_flow(scopes=SCOPES)
-            if flow and "user_code" in flow:
-                print(flow["message"])
-                result = app.acquire_token_by_device_flow(flow)
-        except Exception as exc:
-            logging.error("Device flow init failed: %s", exc)
+    candidates = [
+        explicit_token.strip() if explicit_token else None,
+        os.getenv("HW_TIMETABLE_ACCESS_TOKEN", "").strip() or None,
+    ]
 
-    if result and "access_token" in result:
-        _save_cache(cache)
-        return result["access_token"]
+    if token_url:
+        candidates.append(_fetch_token_from_url(token_url))
 
-    raise RuntimeError("Could not obtain access token (set HW_TIMETABLE_ACCESS_TOKEN)")
+    candidates.append(_read_cached_token())
+
+    for token in candidates:
+        if token:
+            _write_cached_token(token)
+            return token
+
+    raise RuntimeError(
+        "No API token available. Pass --token, set HW_TIMETABLE_ACCESS_TOKEN, or provide --token-url."
+    )

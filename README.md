@@ -20,8 +20,7 @@ consumer.
 
 - Python 3.11+ (matches the version targeted in `pyproject.toml`).
 - Dependencies listed in `requirements.txt`:
-  - `msal` for Microsoft device-code authentication.
-  - `requests` for HTTPS API calls.
+  - `requests` for HTTPS API calls and optional token downloads.
   - `pydantic` for strict data validation.
   - `tzdata` to supply Olson timezone definitions on minimal distros such as
     Alpine.
@@ -39,17 +38,20 @@ python3 -m pip install -r requirements.txt
 
 ## Authentication
 
-Running the CLI usually requires an access token for the HW timetable API.
-When a token is not provided explicitly, MSAL's device login flow is started:
+Running the CLI requires an `Authorization: Bearer <token>` header. Obtain a
+token from the official timetable dashboard (open the browser dev tools network
+tab, capture any API call, and copy the `Authorization` header value). You can
+then provide it via one of the following mechanisms:
 
-1. Run the command (examples below).
-2. Follow the printed instructions—open the supplied URL and enter the code.
-3. After signing in, the token cache is stored at
-   `~/.cache/hw_timetable/msal_cache.bin` for subsequent runs.
+- `--token <value>` CLI flag (highest priority).
+- `HW_TIMETABLE_ACCESS_TOKEN` environment variable.
+- `--token-url https://example.com/token.txt`, which fetches the token as plain
+  text from an internal endpoint you control.
+- Cached token at `~/.cache/hw_timetable/token.txt` (written automatically each
+  time a token is supplied through one of the methods above).
 
-You can skip the device flow by setting an existing token via the
-`HW_TIMETABLE_ACCESS_TOKEN` environment variable. Use `--offline` once data has
-been dumped locally to avoid authentication altogether.
+Once JSON fixtures have been dumped locally, you can run with `--offline` to
+avoid authenticating altogether.
 
 ## Basic Usage
 
@@ -77,6 +79,8 @@ CalDAV client.
 | `--offline` | Read previously dumped JSON fixtures instead of calling the API. |
 | `--preview` | Print the next 10 upcoming sessions to stdout after writing the ICS. |
 | `--verbose` | Enable debug logging for HTTP retries and filtering decisions. |
+| `--token` | Inline bearer token for protected API calls (overrides env/cache). |
+| `--token-url` | Fetch a bearer token from a URL that returns plain text. |
 
 All options can be combined. For example, to fetch Semester 2 labs only, dump
 the raw payloads, and preview the next lectures:
