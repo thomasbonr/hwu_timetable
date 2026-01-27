@@ -34,6 +34,25 @@ def test_ics_structure():
     assert "VERSION:2.0" in ics
     assert "PRODID:-//HW Timetable Exporter//EN" in ics
     assert "CALSCALE:GREGORIAN" in ics
+    assert "METHOD:PUBLISH" in ics
+    assert "X-WR-CALNAME:HW Timetable" in ics
+    lines = ics.split("\r\n")
+    caldesc_value_parts = []
+    collecting_desc = False
+    for line in lines:
+        if line.startswith("X-WR-CALDESC:"):
+            caldesc_value_parts.append(line[len("X-WR-CALDESC:"):])
+            collecting_desc = True
+            continue
+        if collecting_desc and line.startswith(" "):
+            caldesc_value_parts.append(line[1:])
+            continue
+        if collecting_desc:
+            break
+    assert "".join(caldesc_value_parts) == (
+        "Academic year: 2023-4 | Campus: SCO | Cohort: 1 | Semesters: S1"
+    )
+    assert "X-WR-TIMEZONE:Europe/London" in ics
     assert ics.count("BEGIN:VEVENT") >= 1
 
 
@@ -114,3 +133,35 @@ def test_long_summary_is_folded():
     summary_index = next(i for i, line in enumerate(lines) if line.startswith("SUMMARY:"))
     assert len(lines[summary_index].encode("utf-8")) <= 75
     assert lines[summary_index + 1].startswith(" ")
+
+
+def test_output_filename_falls_back_to_activity_semesters():
+    programme_info = {
+        "CampusCode": "ED",
+        "Cohort": "SEP",
+    }
+    activity = _build_single_activity(SemesterCode="S2")
+    name = ics_builder.output_filename(programme_info, activities=[activity])
+    assert name == "hw_timetable_unknown_ED_SEP_S2.ics"
+
+
+def test_output_filename_accepts_alternative_fields():
+    programme_info = {
+        "AcademicYearName": "2025/6",
+        "Campus": "DXB ",
+        "ProgrammeCode": "MSC",
+        "SemesterCodes": [{"Code": "S2"}, "S3"],
+    }
+    name = ics_builder.output_filename(programme_info)
+    assert name == "hw_timetable_2025-6_DXB_MSC_S2-S3.ics"
+
+
+def test_output_filename_handles_current_academic_year_key():
+    programme_info = {
+        "CurrentAcademicYear": "2026/7",
+        "CampusCode": "ED",
+        "Cohort": "FT",
+        "Semesters": "S1",
+    }
+    name = ics_builder.output_filename(programme_info)
+    assert name == "hw_timetable_2026-7_ED_FT_S1.ics"

@@ -311,11 +311,49 @@ def build_ics(
     if include_blocked:
         events.extend(build_blocked_events(blocked_periods, tz=tz, start=start, end=end))
     now = datetime.now(timezone.utc)
+    calendar_name = (
+        _normalize_str(
+            _pick_field(
+                programme_info,
+                (
+                    "CalendarName",
+                    "ProgrammeName",
+                    "ProgrammeDescription",
+                    "ProgrammeCode",
+                ),
+            )
+        )
+        or "HW Timetable"
+    )
+    academic_year = _extract_academic_year(programme_info)
+    campus = _extract_component(
+        programme_info,
+        ("CampusCode", "Campus", "CampusName", "CampusDescription"),
+        "campus",
+    )
+    cohort = _extract_component(
+        programme_info,
+        ("Cohort", "CohortCode", "ProgrammeCode", "ProgrammeName"),
+        "cohort",
+    )
+    semester_label = _extract_semester_label(programme_info, activities)
+    calendar_desc = " | ".join(
+        [
+            f"Academic year: {academic_year}",
+            f"Campus: {campus}",
+            f"Cohort: {cohort}",
+            f"Semesters: {semester_label}",
+        ]
+    )
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//HW Timetable Exporter//EN",
         "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{_escape_text(calendar_name)}",
+        f"X-WR-CALDESC:{_escape_text(calendar_desc)}",
+        "X-WR-TIMEZONE:Europe/London",
     ]
     lines.extend(
         [
@@ -364,13 +402,112 @@ def build_ics(
     lines.append("END:VCALENDAR")
     ics = _format_lines(lines)
     return ics, events
-def output_filename(programme_info: dict) -> str:
-    year = programme_info.get("AcademicYear", "unknown").replace("/", "-")
-    campus = programme_info.get("CampusCode", "campus")
-    cohort = programme_info.get("Cohort", "cohort")
-    semesters = programme_info.get("Semesters")
-    if isinstance(semesters, list):
-        sem = "-".join(semesters)
-    else:
-        sem = str(semesters)
+def _pick_field(payload: dict, names: Tuple[str, ...]) -> Any:
+    for name in names:
+        if name in payload:
+            value = payload[name]
+            if value not in (None, "", []):
+                return value
+    return None
+
+
+def _normalize_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    return str(value)
+
+
+def _extract_academic_year(programme_info: dict) -> str:
+    year_value = _pick_field(
+        programme_info,
+        (
+            "AcademicYear",
+            "AcademicYearName",
+            "AcademicYearDescription",
+            "AcademicSession",
+            "CurrentAcademicYear",
+            "AcademicYearCode",
+        ),
+    )
+    cleaned = _normalize_str(year_value)
+    if cleaned:
+        return cleaned.replace("/", "-")
+    return "unknown"
+
+
+def _extract_component(programme_info: dict, names: Tuple[str, ...], default: str) -> str:
+    value = _normalize_str(_pick_field(programme_info, names))
+    return value or default
+
+
+def _coerce_semester_tokens(raw: Any) -> List[str]:
+    tokens: List[str] = []
+    if raw is None:
+        return tokens
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped:
+            tokens.append(stripped)
+        return tokens
+    if isinstance(raw, dict):
+        for key in ("Code", "SemesterCode", "Name", "Description"):
+            if raw.get(key):
+                tokens.extend(_coerce_semester_tokens(raw[key]))
+                break
+        return tokens
+    if isinstance(raw, (list, tuple, set)):
+        for item in raw:
+            tokens.extend(_coerce_semester_tokens(item))
+        return tokens
+    tokens.append(str(raw))
+    return tokens
+
+
+def _extract_semester_label(
+    programme_info: dict,
+    activities: Iterable[Activity] | None,
+) -> str:
+    semester_source = _pick_field(
+        programme_info,
+        (
+            "Semesters",
+            "SemesterCodes",
+            "ProgrammeSemesters",
+            "SemestersList",
+            "Semester",
+        ),
+    )
+    tokens = _coerce_semester_tokens(semester_source)
+    if not tokens and activities is not None:
+        codes = sorted(
+            {
+                getattr(act, "SemesterCode", None)
+                for act in activities
+                if getattr(act, "SemesterCode", None)
+            }
+        )
+        tokens = [c for c in codes if c]
+    return "-".join(tokens) if tokens else "None"
+
+
+def output_filename(
+    programme_info: dict,
+    *,
+    activities: Iterable[Activity] | None = None,
+) -> str:
+    year = _extract_academic_year(programme_info)
+    campus = _extract_component(
+        programme_info,
+        ("CampusCode", "Campus", "CampusName", "CampusDescription"),
+        "campus",
+    )
+    cohort = _extract_component(
+        programme_info,
+        ("Cohort", "CohortCode", "ProgrammeCode", "ProgrammeName"),
+        "cohort",
+    )
+    sem = _extract_semester_label(programme_info, activities)
     return f"hw_timetable_{year}_{campus}_{cohort}_{sem}.ics"

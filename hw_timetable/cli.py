@@ -1,15 +1,9 @@
-"""Command line interface for HW timetable exporter."""
-
 from __future__ import annotations
-
 import argparse
-import dataclasses
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import List
-
 from . import api, ics_builder, models, util
-
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="HW timetable exporter")
@@ -40,7 +34,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
-
 def main(argv: List[str] | None = None) -> None:
     args = parse_args(argv)
     util.configure_logging(args.verbose)
@@ -53,8 +46,8 @@ def main(argv: List[str] | None = None) -> None:
     token = None
     if not args.offline:
         from . import auth
-
         token = auth.acquire_token()
+        
     client = api.APIClient(token, dump_json=args.dump_json, offline=args.offline)
     programme_info = client.get("/Student/programme-info")
     semesters = client.get("/systemadmin/semesters")
@@ -62,25 +55,26 @@ def main(argv: List[str] | None = None) -> None:
     blocked_data = client.get("/activity/blocked-out-periods")
     client.get("/activity/ad-hoc")  # fetched for completeness
 
-    act_fields = {f.name for f in dataclasses.fields(models.Activity)}
-    activities = [
-        models.Activity(**{k: v for k, v in a.items() if k in act_fields})
-        for a in activities_data
-    ]
-    blocked_fields = {f.name for f in dataclasses.fields(models.BlockedPeriod)}
-    blocked_periods = [
-        models.BlockedPeriod(**{k: v for k, v in b.items() if k in blocked_fields})
-        for b in blocked_data
-    ]
+    # --- REFACTOR START ---
+    # Pydantic automatically handles validation and nested object creation.
+    # We use model_validate (Pydantic v2) to parse the dictionary lists.
+    activities = [models.Activity.model_validate(a) for a in activities_data]
+    blocked_periods = [models.BlockedPeriod.model_validate(b) for b in blocked_data]
+    # --- REFACTOR END ---
 
     if args.only_current_semester:
         today = util.today()
         current_sem = None
         for sem in semesters:
-            start_sem = date.fromisoformat(sem["StartDate"])
-            end_sem = date.fromisoformat(sem["EndDate"])
-            if start_sem <= today <= end_sem:
-                current_sem = sem.get("Code") or sem.get("SemesterCode")
+            # Safely get start/end dates
+            s_date = sem.get("StartDate")
+            e_date = sem.get("EndDate")
+            if s_date and e_date:
+                start_sem = date.fromisoformat(s_date)
+                end_sem = date.fromisoformat(e_date)
+                if start_sem <= today <= end_sem:
+                    current_sem = sem.get("Code") or sem.get("SemesterCode")
+        
         if current_sem:
             activities = [a for a in activities if a.SemesterCode == current_sem]
 
@@ -95,10 +89,13 @@ def main(argv: List[str] | None = None) -> None:
         filter_courses=filter_courses,
         filter_types=filter_types,
     )
+    
     out_dir = Path("out/ics")
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = ics_builder.output_filename(programme_info)
-    (out_dir / filename).write_text(ics, encoding="utf-8")
+    filename = ics_builder.output_filename(programme_info, activities=activities)
+    # Write binary to avoid newline translation on Windows and preserve CRLF folding.
+    (out_dir / filename).write_bytes(ics.encode("utf-8"))
+    
     if args.preview:
         now = datetime.now(timezone.utc)
         upcoming = [e for e in events if e["start"] >= now]
@@ -108,6 +105,5 @@ def main(argv: List[str] | None = None) -> None:
             local_end = e["end"].astimezone(tz)
             print(f"{local_start:%Y-%m-%d %H:%M} - {local_end:%H:%M} {e['summary']}")
 
-
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()
