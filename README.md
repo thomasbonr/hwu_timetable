@@ -4,6 +4,8 @@ Command-line utility that fetches Heriot-Watt University timetable data and
 produces standards-compliant iCalendar (`.ics`) files that can be imported into Apple Calendar, Google Calendar, or any other CalDAV-capable
 consumer.
 
+[![Support this project](https://img.shields.io/badge/Support-PayPal-blue?logo=paypal)](https://paypal.me/ssthlgrkfdnlx)
+
 ## Highlights
 
 - Generates compact weekly-recurring events with proper EXDATE handling.
