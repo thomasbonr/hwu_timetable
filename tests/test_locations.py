@@ -1,7 +1,6 @@
 from hw_timetable import ics_builder, models
 from hw_timetable.util import parse_timezone
 
-
 PROGRAMME_INFO = {
     "AcademicYear": "2023/4",
     "CampusCode": "SCO",
@@ -51,10 +50,7 @@ def test_combines_rooms_for_building_and_escapes_commas():
     )
     tz = parse_timezone("Europe/London")
     ics, _ = ics_builder.build_ics(PROGRAMME_INFO, [activity], [], tz=tz)
-    assert (
-        extract_location_line(ics)
-        == "LOCATION:James Watt Centre - JW1\\, JW2"
-    )
+    assert extract_location_line(ics) == "LOCATION:James Watt Centre - JW1\\, JW2"
 
 
 def test_multiple_buildings_listed_in_order():
@@ -68,8 +64,7 @@ def test_multiple_buildings_listed_in_order():
     tz = parse_timezone("Europe/London")
     ics, _ = ics_builder.build_ics(PROGRAMME_INFO, [activity], [], tz=tz)
     assert (
-        extract_location_line(ics)
-        == "LOCATION:David Brewster - DB1\\, DB2 / Grid - G1"
+        extract_location_line(ics) == "LOCATION:David Brewster - DB1\\, DB2 / Grid - G1"
     )
 
 

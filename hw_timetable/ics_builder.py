@@ -1,19 +1,33 @@
 """ICS calendar builder."""
+
 from __future__ import annotations
+
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Iterable, List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
+
 from .models import Activity, BlockedPeriod
+
 DASHBOARD_URL = "https://timetableexplorer.hw.ac.uk/timetable-dashboard"
+
+
 def _parse_date(s: str) -> date:
-    return datetime.fromisoformat(s.replace('Z', '')).date()
+    return datetime.fromisoformat(s.replace("Z", "")).date()
+
+
 def _parse_time(s: str) -> time:
     return datetime.strptime(s, "%H:%M:%S").time()
+
+
 def _format(dt: datetime) -> str:
     return dt.strftime("%Y%m%dT%H%M%SZ")
+
+
 def _format_local(dt: datetime) -> str:
     return dt.strftime("%Y%m%dT%H%M%S")
+
+
 def _escape_text(value: str) -> str:
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
     escaped = normalized.replace("\\", "\\\\")
@@ -22,17 +36,21 @@ def _escape_text(value: str) -> str:
     escaped = escaped.replace(";", "\\;")
     return escaped
 
+
 # ---- Location parsing & normalization helpers ----
 def _ws(s: str) -> str:
     return " ".join(str(s).split()) if s is not None else ""
+
 
 def _norm_building(b: str) -> str:
     # Keep original casing but normalize whitespace
     return _ws(b)
 
+
 def _norm_room(r: str) -> str:
     # Normalize whitespace and uppercase room codes like JW1
     return _ws(r).upper()
+
 
 def _get_loc_field(loc: any, *names: str) -> str:
     for n in names:
@@ -45,6 +63,7 @@ def _get_loc_field(loc: any, *names: str) -> str:
         if v:
             return str(v)
     return ""
+
 
 def _build_location_string(act: any) -> str:
     building_order: List[str] = []
@@ -114,7 +133,10 @@ def _build_location_string(act: any) -> str:
             parts.append(extra)
             seen_parts.add(extra)
     return " / ".join(parts)
+
+
 # ---- End helpers ----
+
 
 def _fold_line(line: str, limit: int = 75) -> List[str]:
     if len(line.encode("utf-8")) <= limit:
@@ -134,6 +156,8 @@ def _fold_line(line: str, limit: int = 75) -> List[str]:
     if current_chars:
         folded.append("".join(current_chars))
     return folded
+
+
 def _format_lines(lines: Iterable[str]) -> str:
     formatted: List[str] = []
     for line in lines:
@@ -141,6 +165,8 @@ def _format_lines(lines: Iterable[str]) -> str:
             continue
         formatted.extend(_fold_line(line))
     return "\r\n".join(formatted) + "\r\n"
+
+
 def build_events(
     activities: Iterable[Activity],
     *,
@@ -159,7 +185,9 @@ def build_events(
             continue
         weeks = act.Weeks or act.RunningWeeks
         for week in weeks:
-            start_date_str = (week.StartDate if hasattr(week, "StartDate") else week["StartDate"])
+            start_date_str = (
+                week.StartDate if hasattr(week, "StartDate") else week["StartDate"]
+            )
             occ_date = _parse_date(start_date_str) + timedelta(days=act.ScheduledDay)
             if act.StartDate and occ_date < _parse_date(act.StartDate):
                 continue
@@ -172,11 +200,19 @@ def build_events(
             location = _build_location_string(act)
             instructors: List[str] = []
             for ins in act.InstructorAccounts:
-                name = (ins.DisplayName if hasattr(ins, "DisplayName") else ins.get("DisplayName",""))
+                name = (
+                    ins.DisplayName
+                    if hasattr(ins, "DisplayName")
+                    else ins.get("DisplayName", "")
+                )
                 if name:
                     instructors.append(name.strip())
             description_parts = [
-                (f"Instructor(s): {', '.join([n for n in instructors if n])}" if instructors else ""),
+                (
+                    f"Instructor(s): {', '.join([n for n in instructors if n])}"
+                    if instructors
+                    else ""
+                ),
                 (f"Course: {act.CourseName}" if act.CourseName else ""),
                 (f"Group: {act.Group}" if getattr(act, "Group", None) else ""),
                 (f"Cohort: {act.Cohort}" if getattr(act, "Cohort", None) else ""),
@@ -236,9 +272,18 @@ def build_events(
             if cur not in seen:
                 exdates.append(datetime.combine(cur, start_time, tz))
             cur += timedelta(days=7)
-        last_start_utc = datetime.combine(last_date, start_time, tz).astimezone(timezone.utc)
+        last_start_utc = datetime.combine(last_date, start_time, tz).astimezone(
+            timezone.utc
+        )
         rrule = f"FREQ=WEEKLY;WKST=MO;UNTIL={_format(last_start_utc)}"
-        uid_base = f"{group['course_code']}|{group['activity_name']}|{first_date}|{group['start_time']}|{group['location']}"
+        uid_parts = [
+            group["course_code"],
+            group["activity_name"],
+            str(first_date),
+            group["start_time"],
+            group["location"],
+        ]
+        uid_base = "|".join(uid_parts)
         uid = hashlib.sha1(uid_base.encode()).hexdigest()
         events.append(
             {
@@ -255,6 +300,8 @@ def build_events(
             }
         )
     return events
+
+
 def build_blocked_events(
     periods: Iterable[BlockedPeriod],
     *,
@@ -288,6 +335,8 @@ def build_blocked_events(
             }
         )
     return events
+
+
 def build_ics(
     programme_info: dict,
     activities: Iterable[Activity],
@@ -309,7 +358,9 @@ def build_ics(
         filter_types=filter_types,
     )
     if include_blocked:
-        events.extend(build_blocked_events(blocked_periods, tz=tz, start=start, end=end))
+        events.extend(
+            build_blocked_events(blocked_periods, tz=tz, start=start, end=end)
+        )
     now = datetime.now(timezone.utc)
     calendar_name = (
         _normalize_str(
@@ -402,6 +453,8 @@ def build_ics(
     lines.append("END:VCALENDAR")
     ics = _format_lines(lines)
     return ics, events
+
+
 def _pick_field(payload: dict, names: Tuple[str, ...]) -> Any:
     for name in names:
         if name in payload:
@@ -438,7 +491,9 @@ def _extract_academic_year(programme_info: dict) -> str:
     return "unknown"
 
 
-def _extract_component(programme_info: dict, names: Tuple[str, ...], default: str) -> str:
+def _extract_component(
+    programme_info: dict, names: Tuple[str, ...], default: str
+) -> str:
     value = _normalize_str(_pick_field(programme_info, names))
     return value or default
 
