@@ -1,8 +1,0 @@
-requests>=2.31.0
-pydantic>=2.6.0
-tzdata>=2023.3
-
-[dev]
-pytest
-ruff
-black

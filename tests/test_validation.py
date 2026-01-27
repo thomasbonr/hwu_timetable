@@ -41,7 +41,7 @@ def test_ics_structure():
     collecting_desc = False
     for line in lines:
         if line.startswith("X-WR-CALDESC:"):
-            caldesc_value_parts.append(line[len("X-WR-CALDESC:"):])
+            caldesc_value_parts.append(line[len("X-WR-CALDESC:") :])
             collecting_desc = True
             continue
         if collecting_desc and line.startswith(" "):
@@ -110,7 +110,7 @@ def test_ics_uses_crlf_and_escapes_text():
     collecting = False
     for line in lines:
         if line.startswith("DESCRIPTION:"):
-            desc_parts.append(line[len("DESCRIPTION:"):])
+            desc_parts.append(line[len("DESCRIPTION:") :])
             collecting = True
         elif collecting and line.startswith(" "):
             desc_parts.append(line[1:])
@@ -130,7 +130,9 @@ def test_long_summary_is_folded():
     ics = _build_ics_with_activity(activity)
     lines = ics.split("\r\n")
 
-    summary_index = next(i for i, line in enumerate(lines) if line.startswith("SUMMARY:"))
+    summary_index = next(
+        i for i, line in enumerate(lines) if line.startswith("SUMMARY:")
+    )
     assert len(lines[summary_index].encode("utf-8")) <= 75
     assert lines[summary_index + 1].startswith(" ")
 

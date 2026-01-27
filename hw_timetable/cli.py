@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import argparse
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import List
+
 from . import api, ics_builder, models, util
+
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="HW timetable exporter")
@@ -38,6 +41,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     )
     return parser.parse_args(argv)
 
+
 def main(argv: List[str] | None = None) -> None:
     args = parse_args(argv)
     util.configure_logging(args.verbose)
@@ -52,7 +56,7 @@ def main(argv: List[str] | None = None) -> None:
         from . import auth
 
         token = auth.acquire_token(explicit_token=args.token)
-        
+
     client = api.APIClient(token, dump_json=args.dump_json, offline=args.offline)
     programme_info = client.get("/Student/programme-info")
     semesters = client.get("/systemadmin/semesters")
@@ -79,7 +83,7 @@ def main(argv: List[str] | None = None) -> None:
                 end_sem = date.fromisoformat(e_date)
                 if start_sem <= today <= end_sem:
                     current_sem = sem.get("Code") or sem.get("SemesterCode")
-        
+
         if current_sem:
             activities = [a for a in activities if a.SemesterCode == current_sem]
 
@@ -94,13 +98,13 @@ def main(argv: List[str] | None = None) -> None:
         filter_courses=filter_courses,
         filter_types=filter_types,
     )
-    
+
     out_dir = Path("out/ics")
     out_dir.mkdir(parents=True, exist_ok=True)
     filename = ics_builder.output_filename(programme_info, activities=activities)
     # Write binary to avoid newline translation on Windows and preserve CRLF folding.
     (out_dir / filename).write_bytes(ics.encode("utf-8"))
-    
+
     if args.preview:
         now = datetime.now(timezone.utc)
         upcoming = [e for e in events if e["start"] >= now]
@@ -109,6 +113,7 @@ def main(argv: List[str] | None = None) -> None:
             local_start = e["start"].astimezone(tz)
             local_end = e["end"].astimezone(tz)
             print(f"{local_start:%Y-%m-%d %H:%M} - {local_end:%H:%M} {e['summary']}")
+
 
 if __name__ == "__main__":
     main()

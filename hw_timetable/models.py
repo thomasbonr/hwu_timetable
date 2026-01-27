@@ -16,6 +16,7 @@ class Week(BaseModel):
     WeekNumber: Optional[int] = None
     StartDate: str  # ISO date string
 
+
 class Location(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -24,11 +25,13 @@ class Location(BaseModel):
     # Add other location aliases if they appear in the API (e.g., RoomCode)
     # Pydantic can map these using Field(validation_alias=...) if needed.
 
+
 class Instructor(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     DisplayName: Optional[str] = None
     Email: Optional[str] = None
+
 
 class Activity(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -66,6 +69,7 @@ class Activity(BaseModel):
         if isinstance(value, str):
             return []
         return value
+
 
 class BlockedPeriod(BaseModel):
     model_config = ConfigDict(extra="ignore")
