@@ -18,19 +18,18 @@ consumer.
 
 ## Requirements
 
-- Python 3.11+ (matches the version targeted in `pyproject.toml`).
+- Python 3.11+.
 - Dependencies listed in `requirements.txt`:
   - `requests` for HTTPS API calls and optional token downloads.
   - `pydantic` for strict data validation.
-  - `tzdata` to supply Olson timezone definitions on minimal distros such as
-    Alpine.
+  - `tzdata` to supply Olson timezone definitions.
 - (Optional) `pytest`, `ruff`, and `black` for development—install via
   `pip install -e .[dev]` if desired.
 
 ## Installation
 
 ```bash
-git clone https://github.com/<you>/hw_timetable.git
+git clone https://github.com/thomasbonr/hw_timetable.git
 cd hw_timetable
 python3 -m venv .venv && source .venv/bin/activate  # recommended
 python3 -m pip install -r requirements.txt
@@ -46,27 +45,41 @@ supplied).
 
 ### How to capture the bearer token via your browser
 
-1. Sign in to the official HW timetable dashboard as usual.
+1. Sign in to the official HW timetable dashboard as usual ([https://timetableexplorer.hw.ac.uk/timetable-dashboard](https://timetableexplorer.hw.ac.uk/timetable-dashboard)).
 2. Open your browser developer tools and switch to the "Network" tab.
-3. Trigger any timetable action so that an API request appears (look for
+3. Ensure the persistant logs are enabled, and refresh the page (look for
   requests going to `https://timetableexplorer-api.hw.ac.uk/...`).
 4. Click the API request, locate the **Request Headers** section, and copy the
   full value of the `Authorization` header—it should look like
   `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi...`.
-5. Paste that value into a safe place (password manager, `.env` file, etc.) so
+5. Paste that value into a safe place, `.env` file, etc.) so
   the CLI can reuse it. You may keep the leading `Bearer ` prefix or remove it;
-  the exporter strips it automatically before issuing requests. Tokens typically
-  expire after a few hours, so repeat the steps whenever the API rejects a call.
+  Tokens expire after a ~1 hours, so repeat the steps whenever the API rejects a call.
 
 <img width="2475" height="856" alt="Screenshot 2026-01-27 103544" src="https://github.com/user-attachments/assets/a7a57f0d-13aa-4296-a6ac-4162908d0ca1" />
 
-### Supplying the token to the CLI
+### Supplying the token to the CLI (Recommanded way)
 
 ```bash
-# Export the token for the current shell session
+# Export the token for the current shell session (Bash/macOS/Linux/WSL)
 export HW_TIMETABLE_ACCESS_TOKEN="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi..."
 
 # Download
+python3 -m hw_timetable.cli
+```
+
+Windows users can set the environment variable with either PowerShell or
+Command Prompt before running the CLI:
+
+```powershell
+# PowerShell
+$env:HW_TIMETABLE_ACCESS_TOKEN = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi..."
+python3 -m hw_timetable.cli
+```
+
+```bat
+REM Command Prompt (cmd.exe)
+set HW_TIMETABLE_ACCESS_TOKEN=Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi...
 python3 -m hw_timetable.cli
 ```
 
@@ -77,12 +90,9 @@ python3 -m hw_timetable.cli
 ```
 
 By default, the tool writes a single `.ics` file into `out/ics/` using a file
-name derived from your programme metadata. The file already contains
-Nextcloud-friendly headers (`METHOD:PUBLISH`, `X-WR-CALNAME`, etc.), so you can
-host it on any static server (including Alpine) and subscribe to it from a
-CalDAV client.
+name derived from your programme metadata.
 
-### CLI options
+### CLI options (Optional)
 
 | Option | Description |
 | --- | --- |
@@ -118,15 +128,6 @@ python3 -m hw_timetable.cli \
    `--dump-json` to refresh the cache) and therefore run without any network or
    authentication requirements: `python3 -m hw_timetable.cli --offline --preview`.
 
-### Publishing to Nextcloud (or any CalDAV client)
-
-1. Generate the ICS file: `python3 -m hw_timetable.cli --preview`.
-2. Copy the resulting file from `out/ics/` to your Alpine server (or keep it in
-   place and serve the `out/ics` directory statically).
-3. In Nextcloud Calendar, create a “New subscription from link” and paste the
-   HTTPS URL of the hosted `.ics` file. The calendar metadata (`X-WR-CALNAME`,
-   `X-WR-CALDESC`, `X-WR-TIMEZONE`) ensures the subscription displays a friendly
-   name and correct timezone information automatically.
 
 ## Development
 
