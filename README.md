@@ -59,7 +59,7 @@ supplied).
 
 <img width="2475" height="856" alt="Screenshot 2026-01-27 103544" src="https://github.com/user-attachments/assets/a7a57f0d-13aa-4296-a6ac-4162908d0ca1" />
 
-### Supplying the token to the CLI (Recommanded way)
+### Supplying the token to the CLI (Recommended way)
 
 ```bash
 # Export the token for the current shell session (Bash/macOS/Linux/WSL)
