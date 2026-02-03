@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import List
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 from . import api, ics_builder, models, util
 
@@ -43,6 +49,9 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: List[str] | None = None) -> None:
+    if load_dotenv:
+        load_dotenv()
+
     args = parse_args(argv)
     util.configure_logging(args.verbose)
     tz = util.parse_timezone(args.tz)
@@ -55,7 +64,8 @@ def main(argv: List[str] | None = None) -> None:
     if not args.offline:
         from . import auth
 
-        token = auth.acquire_token(explicit_token=args.token)
+        explicit_token = args.token or os.getenv("HW_TIMETABLE_ACCESS_TOKEN")
+        token = auth.acquire_token(explicit_token=explicit_token)
 
     client = api.APIClient(token, dump_json=args.dump_json, offline=args.offline)
     programme_info = client.get("/Student/programme-info")

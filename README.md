@@ -40,7 +40,7 @@ python3 -m pip install -r requirements.txt
 
 Running the CLI requires an `Authorization: Bearer <token>` header. You can
 provide the token via the `--token` flag, the `HW_TIMETABLE_ACCESS_TOKEN`
-environment variable, or by reusing the cached value stored in
+environment variable, a .env file, or by reusing the cached value stored in
 `~/.cache/hw_timetable/token.txt` (written automatically each time a token is
 supplied).
 
