@@ -7,3 +7,5 @@ out/
 dist/
 build/
 *.egg
+.env
+.DS_Store
