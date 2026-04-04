@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.31.0",
     "pydantic>=2.6.0",
     "tzdata>=2023.3",
+    "python-dotenv>=1.2.1"
 ]
 
 [project.optional-dependencies]
