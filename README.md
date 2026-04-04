@@ -24,16 +24,17 @@ consumer.
   - `requests` for HTTPS API calls and optional token downloads.
   - `pydantic` for strict data validation.
   - `tzdata` to supply Olson timezone definitions.
+- uv—install via `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - (Optional) `pytest`, `ruff`, and `black` for development—install via
-  `pip install -e .[dev]` if desired.
+  `uv pip install -e '.[dev]'` if desired.
 
 ## Installation
 
 ```bash
 git clone https://github.com/thomasbonr/hw_timetable.git
 cd hw_timetable
-python3 -m venv .venv && source .venv/bin/activate  # recommended
-python3 -m pip install -r requirements.txt
+uv venv --python 3.11 && source .venv/bin/activate  # recommended
+uv pip install -r requirements.txt
 ```
 
 ## Authentication
@@ -85,6 +86,14 @@ python3 -m hw_timetable.cli
 ```
 
 ## Basic Usage
+
+Don't forget to activate the virtual environment
+
+```bash
+source .venv/bin/activate
+```
+
+Run the client
 
 ```bash
 python3 -m hw_timetable.cli
